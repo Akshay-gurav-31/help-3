@@ -98,7 +98,6 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
   }, [isSpeaking]);
 
   const getAIResponse = useCallback(async (userMsg: string, history: Message[]): Promise<string> => {
-    // 1. All API keys are now directly in the code.
     const apiKeys = [
       "AIzaSyA1_rsuX11QevyYO-un-Y-5wh0aFIOa9N8",
       "AIzaSyBkAROJX8NNmlInmHcnesyTXWsLCyyza3I",
@@ -111,16 +110,12 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
       "AIzaSyBC2U-3xHDY3YNvS0b7O5qb1c6q5ZbQcYw"
     ];
 
-    if (apiKeys.length === 0) {
-      return "🚫 No API keys are available.";
-    }
+    if (apiKeys.length === 0) return "🚫 No API keys are available.";
 
     let ruleText = '';
     try {
       const res = await fetch('/rules.txt');
-      if (res.ok) {
-        ruleText = await res.text();
-      }
+      if (res.ok) ruleText = await res.text();
     } catch (err) {
       console.warn("rules.txt fetch error:", err);
     }
@@ -136,18 +131,11 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
         ['platformname', ['who are you', 'what is your name', 'platform name']],
         ['contact', ['contact', 'email', 'reach', 'support']],
         ['builtby', ['who built', 'creator', 'founder', 'made this']],
-        ['frontend', ['frontend', 'ui built']],
-        ['backend', ['backend', 'server']],
-        ['ai tools', ['ai tools', 'tech used']],
-        ['features', ['features', 'what can you do']],
-        ['roadmap', ['roadmap', 'future', 'coming soon']],
     ];
 
     for (const [key, phrases] of intentMatches) {
         if (phrases.some(p => lowerQuery.includes(p))) {
-            if (rulesMap[key]) {
-                return `<strong>${key}</strong>: ${rulesMap[key]}`;
-            }
+            if (rulesMap[key]) return `<strong>${key}</strong>: ${rulesMap[key]}`;
         }
     }
 
@@ -160,47 +148,34 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
       })),
     ];
 
-    // 2. Loop through each API key and try the request
-    for (const apiKey of apiKeys) {
-      if (!apiKey) continue;
-
-      try {
-        console.log(`[Gemini] Trying API key ending with ...${apiKey.slice(-4)}`);
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents,
-              generationConfig: { temperature: 0.7 }
-            })
-          }
-        );
-
+    // Create a list of fetch requests (promises) to run in parallel
+    const promises = apiKeys.map(apiKey =>
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          generationConfig: { temperature: 0.7 }
+        })
+      }).then(res => {
+        // If the response is not OK, throw an error to disqualify this promise
         if (!res.ok) {
-          if (res.status === 429 || res.status === 503) { // Rate limit or Server overloaded
-            console.warn(`[Gemini] Key ...${apiKey.slice(-4)} failed (Status: ${res.status}). Switching to the next key.`);
-            continue; // Move to the next key
-          }
-          const errorData = await res.json();
-          console.error(`[Gemini] API Error with key ...${apiKey.slice(-4)}:`, errorData);
-          return `⚠️ API Error: ${errorData.error?.message || res.statusText}`;
+          throw new Error(`API request failed with status ${res.status}`);
         }
+        // Otherwise, parse the JSON and return it
+        return res.json();
+      })
+    );
 
-        const data = await res.json();
-        console.log(`[Gemini] Success with key ...${apiKey.slice(-4)}`);
-        return data?.candidates?.[0]?.content?.parts?.[0]?.text || "🤔 No reply.";
-
-      } catch (networkError) {
-        console.error(`[Gemini] Network Error with key ...${apiKey.slice(-4)}:`, networkError);
-        continue; // Try the next key on network failure
-      }
+    try {
+      // Use Promise.any to get the first successful response
+      const successfulResponse = await Promise.any(promises);
+      return successfulResponse?.candidates?.[0]?.content?.parts?.[0]?.text || "🤔 No reply.";
+    } catch (error) {
+      // This block runs only if ALL API keys fail
+      console.error("[Gemini] All API keys failed.", error);
+      return "🚫 All AI connections are currently busy. Please try again in a moment.";
     }
-
-    // This message is returned only if all API keys fail
-    console.error("[Gemini] All API keys failed.");
-    return "🚫 All AI connections are currently busy. Please try again in a moment.";
   }, []);
 
   const handleSendMessage = useCallback(async (userText: string) => {
@@ -218,7 +193,6 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
   }, [getAIResponse, messages, speakText]);
 
   useEffect(() => {
-    // Setup speech recognition and synthesis
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SR();
