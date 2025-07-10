@@ -140,7 +140,7 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
         role: msg.type === 'ai' ? 'model' as const : 'user' as const,
         parts: [{ text: msg.text }]
       })),
-      { role: 'user', parts: [{ text: "Please respond in shortest way." }] }
+      // { role: 'user', parts: [{ text: "Please respond in shortest way." }] } // Removed this instruction
     ];
 
     try {
@@ -151,7 +151,7 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
+            generationConfig: { temperature: 0.7 } // Removed maxOutputTokens
           })
         }
       );
@@ -251,8 +251,8 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`p-3 rounded-lg max-w-[85%] ${msg.type === 'user'
-                ? 'bg-gradient-to-r from-blue-600 to-purple-600'
-                : 'bg-slate-800 border border-purple-400/10'}`}>
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600'
+                  : 'bg-slate-800 border border-purple-400/10'}`}>
                 {msg.type === 'ai'
                   ? <div dangerouslySetInnerHTML={{ __html: msg.text }} />
                   : msg.text}
