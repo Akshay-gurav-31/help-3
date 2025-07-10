@@ -56,7 +56,7 @@ interface EnhancedAIMentorProps {
 }
 
 export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
-  const GOOGLE_API_KEY = 'AIzaSyC7ny4nBJ6vxSubnoDhsDlcyM75P9NoPC0'; // fake key for demo
+  const GOOGLE_API_KEY = 'AIzaSyCxbsfiEwCUl_sRrPll8D2GT3Xahp8L60E'; // fake key for demo
   const { toast } = useToast();
 
   const [isOpen, setIsOpen] = useState(true);
