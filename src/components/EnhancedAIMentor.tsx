@@ -1,12 +1,12 @@
-// EnhancedAIMentor.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, X, Brain, Mic, MicOff, Volume2, VolumeX, Send } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Brain, Mic, MicOff, Send, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 
+// TypeScript interfaces for Speech Recognition
 interface SpeechRecognitionConstructor {
   new (): SpeechRecognition;
 }
@@ -42,6 +42,8 @@ declare global {
     webkitSpeechRecognition: SpeechRecognitionConstructor;
   }
 }
+
+// Interfaces for messages and API content
 interface Message {
   type: 'ai' | 'user';
   text: string;
@@ -56,7 +58,6 @@ interface EnhancedAIMentorProps {
 }
 
 export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
-  const GOOGLE_API_KEY = 'AIzaSyCxbsfiEwCUl_sRrPll8D2GT3Xahp8L60E'; // fake key for demo
   const { toast } = useToast();
 
   const [isOpen, setIsOpen] = useState(true);
@@ -81,10 +82,11 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const speakText = useCallback((text: string) => {
-    if (!text) return;
+    const cleanedText = text.replace(/<[^>]*>/g, ''); // Remove HTML tags for speech
+    if (!cleanedText) return;
     if (synthRef.current && !isSpeaking) {
       synthRef.current.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
+      const utter = new SpeechSynthesisUtterance(cleanedText);
       utter.rate = 0.95;
       utter.pitch = 1;
       utter.volume = 0.8;
@@ -96,6 +98,15 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
   }, [isSpeaking]);
 
   const getAIResponse = useCallback(async (userMsg: string, history: Message[]): Promise<string> => {
+    // 1. Load all API keys from the .env.local file
+    const apiKeysString = process.env.NEXT_PUBLIC_GEMINI_API_KEYS;
+    const apiKeys = apiKeysString ? apiKeysString.split(',') : [];
+
+    if (apiKeys.length === 0 || !apiKeys[0]) {
+      console.error("API keys are not configured correctly in .env.local. Make sure the variable is named NEXT_PUBLIC_GEMINI_API_KEYS.");
+      return "🚫 API keys are not configured correctly.";
+    }
+
     let ruleText = '';
     try {
       const res = await fetch('/rules.txt');
@@ -114,58 +125,79 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
     });
 
     const intentMatches: [string, string[]][] = [
-      ['platformname', ['who are you', 'what is your name', 'platform name']],
-      ['contact', ['contact', 'email', 'reach', 'support']],
-      ['builtby', ['who built', 'creator', 'founder', 'made this']],
-      ['frontend', ['frontend', 'ui built']],
-      ['backend', ['backend', 'server']],
-      ['ai tools', ['ai tools', 'tech used']],
-      ['features', ['features', 'what can you do']],
-      ['roadmap', ['roadmap', 'future', 'coming soon']],
+        ['platformname', ['who are you', 'what is your name', 'platform name']],
+        ['contact', ['contact', 'email', 'reach', 'support']],
+        ['builtby', ['who built', 'creator', 'founder', 'made this']],
+        ['frontend', ['frontend', 'ui built']],
+        ['backend', ['backend', 'server']],
+        ['ai tools', ['ai tools', 'tech used']],
+        ['features', ['features', 'what can you do']],
+        ['roadmap', ['roadmap', 'future', 'coming soon']],
     ];
 
     for (const [key, phrases] of intentMatches) {
-      if (phrases.some(p => lowerQuery.includes(p))) {
-        if (rulesMap[key]) {
-          return `<strong>${key}</strong>: ${rulesMap[key]}`;
+        if (phrases.some(p => lowerQuery.includes(p))) {
+            if (rulesMap[key]) {
+                return `<strong>${key}</strong>: ${rulesMap[key]}`;
+            }
         }
-      }
     }
 
-    // Gemini fallback
     const fullHistory = [...history, { type: 'user', text: userMsg, timestamp: new Date() }];
     const contents: GoogleGeminiContent[] = [
       { role: 'user', parts: [{ text: `Platform Info:\n${ruleText}` }] },
       ...fullHistory.map(msg => ({
         role: msg.type === 'ai' ? 'model' as const : 'user' as const,
-        parts: [{ text: msg.text }]
+        parts: [{ text: msg.text.replace(/<[^>]*>/g, '') }] // Sanitize HTML from history
       })),
-      // { role: 'user', parts: [{ text: "Please respond in shortest way." }] } // Removed this instruction
     ];
 
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GOOGLE_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            generationConfig: { temperature: 0.7 } // Removed maxOutputTokens
-          })
-        }
-      );
+    // 2. Loop through each API key and try the request
+    for (const apiKey of apiKeys) {
+      if (!apiKey) continue; // Skip any empty keys resulting from trailing commas
 
-      const data = await res.json();
-      if (!res.ok) {
-        console.error("[Gemini] API Error:", data);
-        return `⚠️ API Error: ${data.error?.message || res.statusText}`;
+      try {
+        console.log(`[Gemini] Trying API key ending with ...${apiKey.slice(-4)}`);
+
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents,
+              generationConfig: { temperature: 0.7 }
+            })
+          }
+        );
+
+        if (!res.ok) {
+          // Status 429: Rate limit. Status 503: Server overloaded.
+          // These errors will trigger a switch to the next key.
+          if (res.status === 429 || res.status === 503) {
+            console.warn(`[Gemini] Key ...${apiKey.slice(-4)} failed (Status: ${res.status}). Switching to the next key.`);
+            continue; // This moves to the next key in the loop
+          }
+          // Any other error will stop the process and report the issue.
+          const errorData = await res.json();
+          console.error(`[Gemini] API Error with key ...${apiKey.slice(-4)}:`, errorData);
+          return `⚠️ API Error: ${errorData.error?.message || res.statusText}`;
+        }
+
+        // If successful, return the data and stop the loop
+        const data = await res.json();
+        console.log(`[Gemini] Success with key ...${apiKey.slice(-4)}`);
+        return data?.candidates?.[0]?.content?.parts?.[0]?.text || "🤔 No reply.";
+
+      } catch (networkError) {
+        console.error(`[Gemini] Network Error with key ...${apiKey.slice(-4)}:`, networkError);
+        continue; // Also try the next key on a network failure
       }
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "🤔 No reply.";
-    } catch (err) {
-      console.error("[Gemini] Error:", err);
-      return "🚫 Network/API error.";
     }
+
+    // This message is returned only if all API keys have failed
+    console.error("[Gemini] All API keys failed.");
+    return "🚫 All AI connections are currently busy. Please try again in a moment.";
   }, []);
 
   const handleSendMessage = useCallback(async (userText: string) => {
@@ -175,7 +207,7 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
     setCurrentInput('');
     setIsTyping(true);
 
-    const aiText = await getAIResponse(userText, [...messages, userMsg]);
+    const aiText = await getAIResponse(userText, messages);
     const aiMsg: Message = { type: 'ai', text: aiText, timestamp: new Date() };
     setMessages(prev => [...prev, aiMsg]);
     setIsTyping(false);
@@ -183,6 +215,7 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
   }, [getAIResponse, messages, speakText]);
 
   useEffect(() => {
+    // Setup speech recognition and synthesis
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SR();
@@ -216,6 +249,7 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
       toast({ title: "🎤 Listening...", description: "Speak now!" });
     }
   };
+  
   const stopListening = () => { recognitionRef.current?.stop(); setIsListening(false); };
   const stopSpeaking = () => { synthRef.current?.cancel(); setIsSpeaking(false); };
   const handleClose = () => { setIsOpen(false); onClose(); };
@@ -263,8 +297,8 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
             <div className="flex justify-start">
               <div className="bg-slate-800 text-purple-100 p-3 rounded-lg border border-purple-400/10 flex gap-1">
                 <span className="animate-bounce">•</span>
-                <span className="animate-bounce delay-100">•</span>
-                <span className="animate-bounce delay-200">•</span>
+                <span className="animate-bounce" style={{animationDelay: '100ms'}}>•</span>
+                <span className="animate-bounce" style={{animationDelay: '200ms'}}>•</span>
               </div>
             </div>
           )}
@@ -284,13 +318,13 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
             <Input
               value={currentInput}
               placeholder="Ask me anything..."
-              className="text-sm bg-slate-800 border-purple-400/20 text-white"
+              className="text-sm bg-slate-800 border-purple-400/20 text-white focus:ring-purple-500"
               onChange={e => setCurrentInput(e.target.value)}
               onKeyPress={e => e.key === 'Enter' && handleSendMessage(currentInput)}
               disabled={isTyping}
             />
-            <Button variant="ghost" size="sm" onClick={isListening ? stopListening : startListening}>
-              {isListening ? <MicOff className="text-red-400" /> : <Mic className="text-purple-400" />}
+            <Button variant="ghost" size="icon" onClick={isListening ? stopListening : startListening}>
+              {isListening ? <MicOff className="h-5 w-5 text-red-400" /> : <Mic className="h-5 w-5 text-purple-400" />}
             </Button>
             <Button onClick={() => handleSendMessage(currentInput)} disabled={isTyping || !currentInput.trim()}
               className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
