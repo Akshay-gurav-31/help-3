@@ -98,13 +98,21 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
   }, [isSpeaking]);
 
   const getAIResponse = useCallback(async (userMsg: string, history: Message[]): Promise<string> => {
-    // 1. Load all API keys from the .env.local file
-    const apiKeysString = process.env.NEXT_PUBLIC_GEMINI_API_KEYS;
-    const apiKeys = apiKeysString ? apiKeysString.split(',') : [];
+    // 1. All API keys are now directly in the code.
+    const apiKeys = [
+      "AIzaSyA1_rsuX11QevyYO-un-Y-5wh0aFIOa9N8",
+      "AIzaSyBkAROJX8NNmlInmHcnesyTXWsLCyyza3I",
+      "AIzaSyB1g9CZWZRXN3xHJtyngfIWtxLsoUXzMec",
+      "AIzaSyB2sUrMy3Nkkghi77ToNJG4bMBOSxMFL6Q",
+      "AIzaSyAnRyHaoOFBbB8o42-LwNwW4koELHKxPa8",
+      "AIzaSyC45FdgMHFmo_2zQJ7vzHbLcLfdJEElW2c",
+      "AIzaSyCqCCByhM_EjK-qp2kVulC9ypKyGd_4FeA",
+      "AIzaSyDC_nAR-f7z0ugfzAzFDblf6nPzH5_oa30",
+      "AIzaSyBC2U-3xHDY3YNvS0b7O5qb1c6q5ZbQcYw"
+    ];
 
-    if (apiKeys.length === 0 || !apiKeys[0]) {
-      console.error("API keys are not configured correctly in .env.local. Make sure the variable is named NEXT_PUBLIC_GEMINI_API_KEYS.");
-      return "🚫 API keys are not configured correctly.";
+    if (apiKeys.length === 0) {
+      return "🚫 No API keys are available.";
     }
 
     let ruleText = '';
@@ -148,17 +156,16 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
       { role: 'user', parts: [{ text: `Platform Info:\n${ruleText}` }] },
       ...fullHistory.map(msg => ({
         role: msg.type === 'ai' ? 'model' as const : 'user' as const,
-        parts: [{ text: msg.text.replace(/<[^>]*>/g, '') }] // Sanitize HTML from history
+        parts: [{ text: msg.text.replace(/<[^>]*>/g, '') }]
       })),
     ];
 
     // 2. Loop through each API key and try the request
     for (const apiKey of apiKeys) {
-      if (!apiKey) continue; // Skip any empty keys resulting from trailing commas
+      if (!apiKey) continue;
 
       try {
         console.log(`[Gemini] Trying API key ending with ...${apiKey.slice(-4)}`);
-
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
           {
@@ -172,30 +179,26 @@ export const EnhancedAIMentor = ({ onClose }: EnhancedAIMentorProps) => {
         );
 
         if (!res.ok) {
-          // Status 429: Rate limit. Status 503: Server overloaded.
-          // These errors will trigger a switch to the next key.
-          if (res.status === 429 || res.status === 503) {
+          if (res.status === 429 || res.status === 503) { // Rate limit or Server overloaded
             console.warn(`[Gemini] Key ...${apiKey.slice(-4)} failed (Status: ${res.status}). Switching to the next key.`);
-            continue; // This moves to the next key in the loop
+            continue; // Move to the next key
           }
-          // Any other error will stop the process and report the issue.
           const errorData = await res.json();
           console.error(`[Gemini] API Error with key ...${apiKey.slice(-4)}:`, errorData);
           return `⚠️ API Error: ${errorData.error?.message || res.statusText}`;
         }
 
-        // If successful, return the data and stop the loop
         const data = await res.json();
         console.log(`[Gemini] Success with key ...${apiKey.slice(-4)}`);
         return data?.candidates?.[0]?.content?.parts?.[0]?.text || "🤔 No reply.";
 
       } catch (networkError) {
         console.error(`[Gemini] Network Error with key ...${apiKey.slice(-4)}:`, networkError);
-        continue; // Also try the next key on a network failure
+        continue; // Try the next key on network failure
       }
     }
 
-    // This message is returned only if all API keys have failed
+    // This message is returned only if all API keys fail
     console.error("[Gemini] All API keys failed.");
     return "🚫 All AI connections are currently busy. Please try again in a moment.";
   }, []);
